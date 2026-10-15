@@ -1,0 +1,791 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#790181">
+  <meta name="description" content="Rise through the ranks of the Roman Republic in a historical 2048 puzzle. From puer to consul.">
+  <title>Cursus Honorum — A Roman 2048 Game</title>
+  <style>
+/* Cursus Honorum — visual system, v3
+   Palette sampled from the supplied image: #a70000, #c5ae4f, #604c4c,
+   #eee8e8 and #790181. Tile-specific colors live in src/ranks.js. */
+:root {
+  --crimson: #a70000;
+  --gold: #c5ae4f;
+  --stone: #604c4c;
+  --marble: #eee8e8;
+  --violet: #790181;
+  --paper: #f7f3f1;
+  --paper-light: #fffcfa;
+  --ink: #332836;
+  --muted: #796b74;
+  --line: #decfd4;
+  --shadow: 0 21px 54px rgba(65, 27, 54, .10);
+}
+* { box-sizing: border-box; }
+html { background: var(--paper); }
+body {
+  margin: 0;
+  min-height: 100vh;
+  color: var(--ink);
+  font-family: Georgia, 'Times New Roman', serif;
+  background:
+    radial-gradient(ellipse at 6% 0%, rgba(197,174,79,.15), transparent 41%),
+    radial-gradient(ellipse at 95% 74%, rgba(121,1,129,.08), transparent 46%),
+    var(--paper);
+  line-height: 1.45;
+  -webkit-font-smoothing: antialiased;
+}
+button { font: inherit; cursor: pointer; }
+button:focus-visible, .board:focus-visible, .sidebar-action:focus-visible {
+  outline: 3px solid var(--violet);
+  outline-offset: 3px;
+}
+.topline {
+  height: 9px;
+  background: linear-gradient(90deg,
+    var(--crimson) 0 20%, var(--gold) 20% 40%, var(--stone) 40% 60%,
+    var(--marble) 60% 80%, var(--violet) 80% 100%);
+}
+.page { width: min(1120px, calc(100% - 44px)); margin: 0 auto; padding: 23px 0 48px; }
+.mast { display: flex; align-items: center; justify-content: space-between; gap: 15px; padding-bottom: 16px; border-bottom: 1px solid var(--line); }
+.identity { display: flex; align-items: center; gap: 13px; }
+.seal {
+  height: 46px; width: 46px; flex: none;
+  border: 1px solid var(--gold); border-radius: 50%;
+  display: grid; place-items: center;
+  font-weight: bold; font-size: 18px; color: var(--crimson);
+  box-shadow: inset 0 0 0 3px var(--paper), inset 0 0 0 4px var(--gold);
+}
+.eyebrow, .caps, .tiny, .smallcap {
+  font-family: Arial, Helvetica, sans-serif;
+  font-weight: 750;
+  letter-spacing: .16em;
+  text-transform: uppercase;
+}
+.eyebrow, .smallcap { font-size: 10px; color: var(--crimson); }
+.brand { font-size: 14px; font-weight: bold; letter-spacing: .025em; }
+.mast-right { font-size: 11px; color: var(--muted); text-align: right; }
+.hero { text-align: center; padding: 28px 0 27px; }
+.hero .overline { color: var(--violet); letter-spacing: .27em; font: 700 11px Arial, sans-serif; text-transform: uppercase; }
+.hero h1 { font-size: clamp(39px, 5.5vw, 68px); line-height: 1.04; letter-spacing: -.045em; font-weight: normal; margin: 10px 0 9px; }
+.hero h1 em { color: var(--crimson); font-weight: normal; }
+.hero p { font-size: 15px; color: var(--muted); max-width: 555px; margin: auto; }
+.laurel { color: var(--gold); letter-spacing: .45em; font-size: 19px; margin-bottom: 3px; }
+.layout { display: grid; grid-template-columns: minmax(0, 630px) minmax(0, 1fr); gap: 30px; align-items: start; }
+.game-shell { min-width: 0; background: rgba(255,255,255,.62); border: 1px solid var(--line); border-radius: 8px; padding: 22px; box-shadow: var(--shadow); }
+.game-top { display: flex; align-items: end; justify-content: space-between; gap: 8px; margin-bottom: 16px; }
+.game-top .section-name { font-size: 23px; letter-spacing: -.02em; }
+.scores { display: flex; gap: 8px; }
+.scorebox { min-width: 80px; background: #f0e9ed; border: 1px solid var(--line); padding: 8px 12px 7px; text-align: center; border-radius: 5px; }
+.scorebox span { display: block; color: var(--stone); font: 700 9px Arial, sans-serif; text-transform: uppercase; letter-spacing: .14em; }
+.scorebox strong { display: block; color: var(--violet); font: 750 21px Arial, sans-serif; margin-top: 3px; letter-spacing: -.04em; }
+
+/* IMPORTANT: explicit four equal rows prevents tile content / empty rows from
+   changing board geometry. Aspect ratio is tied to width, not tile content. */
+.board-wrap { position: relative; width: 100%; aspect-ratio: 1 / 1; isolation: isolate; }
+.board {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-rows: repeat(4, minmax(0, 1fr));
+  width: 100%; height: 100%;
+  gap: 10px; padding: 10px;
+  background: #513c52;
+  border: 2px solid #604c4c;
+  border-radius: 8px;
+  box-shadow: inset 0 3px 13px rgba(18,7,23,.28), 0 4px 0 #39273c;
+  overflow: hidden; user-select: none; -webkit-user-select: none;
+  touch-action: none;
+}
+.cell {
+  min-width: 0; min-height: 0;
+  width: 100%; height: 100%;
+  border-radius: 5px;
+  background: rgba(238,232,232,.16);
+  box-shadow: inset 0 1px 3px rgba(24,9,24,.22);
+  overflow: hidden;
+}
+.tile {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  width: 100%; height: 100%; min-width: 0; min-height: 0;
+  border-radius: 5px; position: relative; overflow: hidden;
+  text-align: center; padding: 5px 3px;
+  background: var(--tile-bg); color: var(--tile-ink);
+  box-shadow: inset 0 0 0 2px rgba(255,255,255,.25), 0 2px 5px rgba(32,13,28,.12);
+  animation: arrive .15s ease-out;
+}
+.tile::before { content: ''; position: absolute; inset: 5px; border: 1px solid currentColor; border-radius: 3px; opacity: .28; pointer-events: none; }
+.tile .glyph { font-size: clamp(20px, 3.1vw, 34px); line-height: 1; margin-top: 2px; }
+.tile .rank {
+  font: 800 clamp(8px, 1.1vw, 12px)/1.12 Arial, Helvetica, sans-serif;
+  letter-spacing: .035em; text-transform: uppercase;
+  margin-top: 8px; max-width: 100%; overflow-wrap: anywhere;
+}
+.tile .value { font: 750 clamp(8px, 1.0vw, 11px) Arial, sans-serif; opacity: .77; letter-spacing: .08em; margin-top: 5px; }
+.tile.high .rank { font-size: clamp(8px, 1.03vw, 11px); }
+.tile.high .glyph { font-size: clamp(20px, 2.95vw, 31px); }
+.tile[data-value='2048'] { box-shadow: inset 0 0 0 3px #fff6cc, inset 0 0 0 5px #ab831e, 0 0 17px rgba(226,199,93,.7); }
+@keyframes arrive { from { transform: scale(.85); opacity: .55; } to { transform: scale(1); opacity: 1; } }
+
+.controls { display: flex; gap: 10px; margin-top: 19px; flex-wrap: wrap; }
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 7px;
+  border: 1px solid #bfa9b7; border-radius: 5px;
+  background: #fffafa; color: var(--stone);
+  padding: 12px 17px; min-height: 44px;
+  font: 750 12px Arial, sans-serif; letter-spacing: .025em;
+  transition: transform .12s, filter .12s;
+}
+.btn:hover { filter: brightness(.96); }
+.btn:active { transform: translateY(1px); }
+.btn.primary { background: var(--crimson); border-color: var(--crimson); color: white; }
+.btn:disabled { opacity: .47; cursor: not-allowed; }
+.keyboard-hint { text-align: center; margin: 11px 0 0; color: var(--muted); font-size: 12px; }
+.direction-pad { display: none; grid-template-columns: repeat(3, 48px); grid-template-rows: repeat(2, 43px); gap: 6px; justify-content: center; margin-top: 14px; }
+.direction-pad button { min-width: 44px; min-height: 42px; border: 1px solid var(--line); border-radius: 5px; background: #efe6eb; color: var(--violet); font-size: 21px; font-weight: bold; }
+.direction-pad button:hover { background: #e8dbe4; }
+.direction-pad button[data-dir=up] { grid-column: 2; grid-row: 1; }
+.direction-pad button[data-dir=left] { grid-column: 1; grid-row: 2; }
+.direction-pad button[data-dir=down] { grid-column: 2; grid-row: 2; }
+.direction-pad button[data-dir=right] { grid-column: 3; grid-row: 2; }
+
+/* Always-visible tier guide placed directly BELOW the playable board. */
+.rank-reference { border-top: 1px solid var(--line); margin-top: 22px; padding-top: 19px; }
+.reference-heading { display: flex; align-items: end; justify-content: space-between; gap: 12px; margin-bottom: 13px; }
+.reference-heading h2 { font-size: 22px; line-height: 1.15; font-weight: normal; margin: 6px 0 0; }
+.reference-heading h2 em { color: var(--violet); font-weight: normal; }
+.legend-note { font: 700 10px Arial, sans-serif; letter-spacing: .05em; color: var(--muted); white-space: nowrap; }
+.rank-legend { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.legend-item {
+  min-width: 0; display: flex; align-items: center; gap: 8px;
+  background: #fffafb; border: 1px solid #e4d7de; border-radius: 6px;
+  padding: 6px; position: relative;
+  transition: border-color .2s, box-shadow .2s;
+}
+.legend-item.current { border-color: var(--violet); box-shadow: 0 0 0 1px var(--violet); }
+.legend-item.current::after { content: '↑'; font: 900 12px Arial, sans-serif; color: var(--violet); position: absolute; right: 6px; top: 5px; }
+.legend-icon {
+  display: grid; place-items: center;
+  flex: 0 0 40px; width: 40px; height: 43px;
+  border-radius: 4px; background: var(--rank-bg); color: var(--rank-ink);
+  font-size: 23px; line-height: 1;
+  box-shadow: inset 0 0 0 1px rgba(0,0,0,.09);
+}
+.legend-copy { min-width: 0; padding-right: 4px; }
+.legend-copy strong { font: 750 11px/1.17 Arial, sans-serif; color: var(--ink); display: block; overflow-wrap: anywhere; }
+.legend-copy small { display: block; font: 750 10px Arial, sans-serif; color: #8e707d; margin-top: 4px; }
+.legend-item.final .legend-icon { box-shadow: inset 0 0 0 2px #735326, inset 0 0 0 4px #fff4bf; }
+.reference-footnote { font-size: 12px; color: var(--muted); margin: 11px 0 0; }
+
+.side { padding-top: 3px; min-width: 0; }
+.tiny { font-size: 10px; color: var(--violet); }
+.progress-card { background: #fffafb; border: 1px solid var(--line); padding: 20px; margin-bottom: 24px; box-shadow: 0 5px 18px rgba(50,22,46,.05); border-top: 4px solid var(--gold); }
+.progress-top, .progress-label { display: flex; align-items: center; justify-content: space-between; }
+.progress-top .roman { font-size: 17px; color: var(--violet); }
+.progress-card h3 { font-weight: normal; font-size: 23px; margin: 9px 0 2px; }
+.progress-card p { font-size: 13px; color: var(--muted); margin: 0; line-height: 1.55; }
+.progress-track { height: 8px; border-radius: 10px; background: #e8dfe5; overflow: hidden; margin: 16px 0 9px; }
+.progress-fill { height: 100%; width: 0; background: linear-gradient(90deg,var(--crimson),var(--gold),var(--violet)); border-radius: 10px; transition: width .25s ease; }
+.progress-label { font: 750 10px Arial, sans-serif; color: var(--muted); letter-spacing: .05em; }
+.side-section { border-bottom: 1px solid var(--line); padding: 7px 0 24px; margin-bottom: 22px; }
+.side-section h2 { font-size: 24px; font-weight: normal; margin: 9px 0 10px; }
+.side-section p { font-size: 14px; color: var(--muted); margin: 0; }
+.how { display: flex; gap: 14px; align-items: start; margin: 0 0 18px; }
+.how-number { background: #e9d8e5; color: var(--violet); font: 700 16px Georgia, serif; height: 34px; min-width: 34px; border-radius: 50%; border: 1px solid #d1b5cf; display: grid; place-items: center; }
+.how strong { font-size: 15px; font-weight: normal; display: block; }
+.how p { font-size: 13px; margin: 3px 0 0; }
+.sidebar-action { width: 100%; display: flex; justify-content: space-between; align-items: center; border: none; border-top: 1px solid var(--line); background: none; padding: 16px 1px; color: var(--violet); text-align: left; font: 750 12px Arial, sans-serif; text-transform: uppercase; letter-spacing: .10em; }
+.sidebar-action:hover { color: var(--crimson); }
+.foot { display: flex; justify-content: space-between; gap: 15px; color: var(--muted); border-top: 1px solid var(--line); padding-top: 17px; margin-top: 45px; font-size: 12px; }
+.foot em { color: var(--crimson); }
+
+/* Win/lose: a centered panel sits above the game board. Confetti is behind it. */
+.overlay { display: none; position: absolute; inset: 0; border-radius: 8px; z-index: 5; background: rgba(37,17,42,.82); text-align: center; align-items: center; justify-content: center; padding: 17px; overflow: hidden; }
+.overlay.open { display: flex; }
+.overlay-panel { position: relative; z-index: 2; width: min(100%, 355px); padding: 23px 17px 26px; border: 3px solid var(--gold); border-radius: 8px; box-shadow: 0 12px 36px rgba(0,0,0,.35); background: var(--paper-light); color: var(--ink); }
+.overlay .big-emblem { font-size: 49px; line-height: 1; color: var(--violet); }
+.overlay.win .big-emblem { color: var(--crimson); }
+.overlay h2 { font-weight: normal; font-size: clamp(28px, 5vw, 42px); line-height: 1.08; margin: 10px 0; color: var(--crimson); }
+.overlay p { font-size: 14px; line-height: 1.55; max-width: 310px; margin: 0 auto 17px; color: var(--stone); }
+.overlay .latin { font-size: 17px; color: var(--violet); font-style: italic; display: block; margin-bottom: 4px; }
+.overlay .translation { font-size: 12px; color: var(--muted); }
+.overlay-actions { display: flex; align-items: center; justify-content: center; gap: 9px; flex-wrap: wrap; }
+.overlay-actions .btn { background: var(--crimson); color: #fff; border-color: var(--crimson); }
+.overlay-actions .btn.secondary { background: white; border-color: var(--line); color: var(--stone); }
+.confetti-layer { position: absolute; inset: 0; z-index: 1; pointer-events: none; overflow: hidden; }
+.confetti-bit { position: absolute; top: -18%; left: var(--x); width: var(--w); height: var(--h); background: var(--confetti-color); opacity: .95; border-radius: 1px; animation: confetti-fall var(--duration) linear var(--delay) infinite; transform: translate3d(0,-20%,0) rotate(0); }
+@keyframes confetti-fall { 0% { transform: translate3d(0,-10px,0) rotate(0); } 100% { transform: translate3d(var(--drift),630px,0) rotate(var(--spin)); } }
+
+.toast { position: fixed; bottom: 23px; left: 50%; transform: translateX(-50%) translateY(20px); z-index: 8; opacity: 0; pointer-events: none; background: var(--stone); color: white; border: 1px solid var(--gold); padding: 13px 20px; font: 700 12px Arial, sans-serif; letter-spacing: .04em; box-shadow: 0 10px 30px rgba(22,9,24,.3); text-align: center; max-width: calc(100vw - 30px); transition: .2s ease; }
+.toast.show { transform: translateX(-50%) translateY(0); opacity: 1; }
+.shade { display: none; position: fixed; inset: 0; z-index: 10; align-items: center; justify-content: center; padding: 16px; background: rgba(35,17,41,.70); overflow: auto; }
+.shade.open { display: flex; }
+.dialog { position: relative; background: var(--paper-light); border: 5px solid #e3d5df; outline: 1px solid var(--violet); border-radius: 6px; width: 100%; max-width: 620px; max-height: min(90vh,850px); overflow-y: auto; box-shadow: 0 25px 70px rgba(17,5,22,.43); padding: 28px; }
+.dialog h2 { font-weight: normal; font-size: 32px; color: var(--crimson); margin: 7px 0 12px; }
+.dialog p { font-size: 15px; color: var(--stone); }
+.close { position: absolute; top: 11px; right: 13px; border: 0; background: transparent; color: var(--stone); font: 30px Georgia, serif; line-height: 1; padding: 4px 7px; }
+.dialog-actions { margin-top: 22px; display: flex; gap: 10px; flex-wrap: wrap; }
+.atlas-grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 10px; margin-top: 17px; }
+.atlas-item { display: flex; align-items: start; gap: 10px; padding: 12px; background: #f5eff3; border: 1px solid var(--line); }
+.atlas-item.locked { opacity: .55; }
+.atlas-icon { flex: none; width: 42px; height: 42px; display: grid; place-items: center; font-size: 24px; border-radius: 4px; background: var(--rank-bg); color: var(--rank-ink); }
+.atlas-item strong { display: block; font-size: 14px; }
+.atlas-item small { font: 700 10px Arial, sans-serif; color: var(--violet); letter-spacing: .1em; }
+.atlas-item p { font-size: 12px; line-height: 1.45; margin: 3px 0 0; }
+
+@media (max-width: 900px) {
+  .layout { grid-template-columns: minmax(0,1fr); gap: 26px; }
+  .game-shell, .side { max-width: 610px; width: 100%; margin: auto; }
+  .side { display: grid; grid-template-columns: 1fr 1fr; gap: 19px; }
+  .progress-card, .side-actions { grid-column: 1 / -1; }
+  .progress-card, .side-section { margin-bottom: 0; }
+  .hero { padding: 23px 0; }
+  .direction-pad { display: grid; }
+}
+@media (max-width: 520px) {
+  .page { width: min(calc(100% - 24px), 470px); padding-top: 15px; }
+  .mast-right { display: none; }
+  .brand { font-size: 11px; }
+  .seal { height: 38px; width: 38px; font-size: 15px; }
+  .hero { padding: 21px 0 22px; }
+  .hero h1 { font-size: 42px; }
+  .hero p { font-size: 13px; }
+  .game-shell { padding: 12px; }
+  .game-top .section-name { font-size: 20px; }
+  .scorebox { min-width: 63px; padding: 6px 7px; }
+  .scorebox strong { font-size: 17px; }
+  .board { gap: 6px; padding: 6px; border-width: 1px; }
+  .tile { padding: 3px 1px; }
+  .tile .glyph { font-size: clamp(16px, 6.5vw, 29px); margin: 0; }
+  .tile .rank { font-size: clamp(7px, 2.15vw, 11px); margin-top: 5px; letter-spacing: 0; }
+  .tile.high .rank { font-size: clamp(7px, 1.95vw, 10px); }
+  .tile .value { font-size: 8px; margin-top: 3px; }
+  .tile::before { inset: 3px; }
+  .controls { margin-top: 15px; gap: 6px; }
+  .btn { padding: 11px 12px; }
+  .rank-legend { grid-template-columns: repeat(2, minmax(0,1fr)); gap: 6px; }
+  .legend-icon { width: 35px; height: 39px; flex-basis: 35px; font-size: 20px; }
+  .legend-copy strong { font-size: 10px; }
+  .legend-note { font-size: 9px; }
+  .reference-heading h2 { font-size: 20px; }
+  .side { display: block; }
+  .side-section { padding-top: 14px; margin-bottom: 14px; }
+  .progress-card { margin-bottom: 17px; }
+  .side-actions { margin-top: 12px; }
+  .atlas-grid { grid-template-columns: 1fr; }
+  .dialog { padding: 21px; }
+  .foot { margin-top: 22px; }
+  .overlay-panel { padding: 16px 9px 19px; }
+  .overlay h2 { font-size: clamp(24px,7vw,34px); }
+}
+@media (max-width: 350px) {
+  .hero h1 { font-size: 36px; }
+  .game-top .section-name { font-size: 18px; }
+  .board { gap: 5px; padding: 5px; }
+  .tile .rank { font-size: 7px; }
+  .tile .glyph { font-size: 17px; }
+  .legend-item { gap: 5px; padding: 4px; }
+  .legend-icon { flex-basis: 30px; width: 30px; height: 35px; }
+  .reference-heading { align-items: start; flex-direction: column; gap: 4px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; }
+}
+
+</style>
+
+</head>
+<body>
+<div class="topline"></div>
+<div class="page">
+  <header class="mast">
+    <div class="identity"><div class="seal" aria-hidden="true">SPQR</div><div><div class="eyebrow">A Roman Republic puzzle</div><div class="brand">SENATUS · POPULUSQUE · ROMANUS</div></div></div>
+    <div class="mast-right">ROMA · RES PUBLICA<br>EXPERIMENTUM · EDITIO III</div>
+  </header>
+  <section class="hero">
+    <div class="laurel" aria-hidden="true">❧ ❦ ❧</div>
+    <div class="overline">The road to the consulship</div>
+    <h1>Cursus <em>Honorum</em></h1>
+    <p>From a young Roman citizen to the highest magistracy of the Republic. Merge your way through the ranks of Rome.</p>
+  </section>
+  <main class="layout">
+    <section class="game-shell" aria-label="2048 game">
+      <div class="game-top"><div><div class="smallcap">The Forum</div><div class="section-name">Your ascent to power</div></div><div class="scores"><div class="scorebox"><span>Score</span><strong id="score">0</strong></div><div class="scorebox"><span>Record</span><strong id="best">0</strong></div></div></div>
+      <div class="board-wrap">
+        <div id="board" class="board" role="grid" aria-label="Roman 2048 board, four rows and four columns. Use arrow keys or swipe to move." tabindex="0"></div>
+        <div id="game-overlay" class="overlay" aria-live="assertive" aria-label="Game result"><div id="confetti" class="confetti-layer" aria-hidden="true"></div><div class="overlay-panel"><div id="overlay-icon" class="big-emblem">❧</div><h2 id="overlay-title"></h2><p id="overlay-text"></p><div id="overlay-actions" class="overlay-actions"></div></div></div>
+      </div>
+      <div class="controls"><button id="new-game" class="btn primary" type="button">↻ &nbsp; New game</button><button id="undo" class="btn icon-btn" type="button" title="Undo last move">↶ &nbsp; Undo</button><button id="rules" class="btn" type="button">? &nbsp; How to play</button></div>
+      <div class="direction-pad" aria-label="On-screen movement controls" role="group"><button type="button" data-dir="up" aria-label="Move up">↑</button><button type="button" data-dir="left" aria-label="Move left">←</button><button type="button" data-dir="down" aria-label="Move down">↓</button><button type="button" data-dir="right" aria-label="Move right">→</button></div>
+      <p class="keyboard-hint">Use your <strong>arrow keys</strong> or <strong>swipe</strong> on the board to move tiles.</p>
+      <section class="rank-reference" aria-labelledby="rank-reference-title">
+        <div class="reference-heading"><div><div class="smallcap">Your career at a glance</div><h2 id="rank-reference-title">The road to <em>consul</em></h2></div><span class="legend-note">11 stages · 1 destination</span></div>
+        <div id="rank-legend" class="rank-legend" role="list" aria-label="All eleven ranks, in order"></div>
+        <p class="reference-footnote">Follow the colors from <em>Puer</em> to <em>Consul</em>. The outlined rank is your highest so far.</p>
+      </section>
+    </section>
+    <aside class="side">
+      <div class="progress-card"><div class="progress-top"><span class="tiny">Your highest rank</span><span class="roman" id="roman-rank">I / XI</span></div><h3 id="highest-title">Puer</h3><p id="highest-detail">Every Roman career begins somewhere.</p><div class="progress-track"><div id="progress-fill" class="progress-fill"></div></div><div class="progress-label"><span>BEGINNING</span><span>CONSUL</span></div></div>
+      <section class="side-section"><span class="tiny">I · Objective</span><h2>Become consul.</h2><p>Merge two identical stages to advance your political career. Reach the <em>Consul</em> tile (2048) to claim Rome's highest regular office.</p></section>
+      <section class="side-section"><span class="tiny">II · Instructions</span><h2>A little <em>ambitio</em>.</h2><div class="how"><div class="how-number">I</div><div><strong>Move your tiles.</strong><p>Swipe in any direction, or use the arrow keys on a keyboard.</p></div></div><div class="how"><div class="how-number">II</div><div><strong>Merge matching ranks.</strong><p>Two pueri become a student, two students lead to the next stage, and so on.</p></div></div><div class="how"><div class="how-number">III</div><div><strong>Keep the Forum open.</strong><p>Make room for new tiles. If no moves remain, your political career ends.</p></div></div></section>
+      <div class="side-actions"><button class="sidebar-action" id="atlas" type="button"><span>Explore all eleven ranks</span><span aria-hidden="true">↗</span></button><button class="sidebar-action" id="about" type="button"><span>A note on Roman history</span><span aria-hidden="true">↗</span></button></div>
+    </aside>
+  </main>
+  <footer class="foot"><span>CURSUS HONORUM · A ROMAN 2048 EXPERIMENT</span><span><em>Ad consulatum!</em> — To the consulship!</span></footer>
+</div>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+<div class="shade" id="dialog-shade" role="presentation"><section class="dialog" role="dialog" aria-modal="true" aria-labelledby="dialog-title"><button class="close" id="dialog-close" aria-label="Close">×</button><div id="dialog-body"></div></section></div>
+<script>
+/* The 11 playable tiers. Colors are derived from the five-color Roman palette:
+   crimson #a70000, gold #c5ae4f, stone #604c4c, marble #eee8e8, violet #790181.
+   Each tier uses a distinct shade or blend for instant recognition. */
+(function (root) {
+  'use strict';
+  const ranks = [
+    {v:2,    name:'Puer',             glyph:'✦', color:'#eee8e8', ink:'#563c45', detail:'A Roman boy begins his education in the household and beyond.', short:'A young Roman at the start of his journey.'},
+    {v:4,    name:'Discipulus',       glyph:'✎', color:'#c5ae4f', ink:'#38291c', detail:'Lessons in language, rhetoric, and the arts of persuasion prepare the ambitious for public life.', short:'The arts of speaking and persuasion.'},
+    {v:8,    name:'Toga Virilis',     glyph:'◈', color:'#ab6d82', ink:'#1b1117', detail:'Taking the toga virilis marks a young freeborn male citizen’s transition toward adult public life.', short:'You have entered public life.'},
+    {v:16,   name:'Tiro Fori',        glyph:'⚖', color:'#a70000', ink:'#fff8ef', detail:'The tirocinium fori was an apprenticeship in legal and political affairs, often under an experienced Roman.', short:'An apprentice in the Roman Forum.'},
+    {v:32,   name:'Miles',            glyph:'⚔', color:'#604c4c', ink:'#fff2e7', detail:'Military experience gave some aspiring magistrates valuable connections, reputation, and command experience.', short:'Campaign experience and the army.'},
+    {v:64,   name:'Tribunus Militum', glyph:'♜', color:'#915b22', ink:'#fff9ed', detail:'A military tribune was an officer in the Roman army. Duties and pathways to the role varied across time.', short:'A military officer with responsibility.'},
+    {v:128,  name:'Tresvir Monetalis',glyph:'◉', color:'#d46974', ink:'#23131e', detail:'One of several minor magistracies, the tresviri monetales oversaw coin production at Rome.', short:'A junior office linked to the mint.'},
+    {v:256,  name:'Quaestor',         glyph:'◆', color:'#9e78bc', ink:'#271831', detail:'Quaestors handled financial and administrative matters. In the late Republic, this office usually brought entry to the Senate.', short:'Financial magistrate and senator.'},
+    {v:512,  name:'Aedilis',          glyph:'❖', color:'#790181', ink:'#fff5f8', detail:'Aediles managed aspects of Rome’s markets, infrastructure, and public festivals. This was an optional step, not a mandatory office.', short:'Markets, public games, and buildings.'},
+    {v:1024, name:'Praetor',          glyph:'⚖', color:'#3e193f', ink:'#fff2ee', detail:'Praetors exercised imperium and performed major judicial and, sometimes, military responsibilities.', short:'A magistrate with imperium.'},
+    {v:2048, name:'Consul',           glyph:'✹', color:'#e2c75d', ink:'#3a2035', detail:'You have reached the consulship! Two consuls held Rome’s highest regular magistracy each year in the Republic.', short:'The Republic’s highest regular office.'}
+  ];
+  const byValue = Object.fromEntries(ranks.map(rank => [rank.v, rank]));
+  function rankFor(value) {
+    if (byValue[value]) return byValue[value];
+    if (value > 2048 && Number.isSafeInteger(value) && Number.isInteger(Math.log2(value))) {
+      return { v: value, name: 'Consul ×' + value / 2048, glyph: '✹', color: '#28132e', ink: '#f9db7c', detail: 'Bonus play beyond the consulship.' };
+    }
+    return null;
+  }
+  root.RomanRanks = { ranks, byValue, rankFor };
+})(typeof window !== 'undefined' ? window : globalThis);
+
+</script>
+<script>
+/*
+ * Pure 2048 game rules — no HTML or browser APIs.
+ * Run the tests with: node --test tests/engine.test.cjs
+ */
+(function (root, factory) {
+  const engine = factory();
+  if (typeof module === 'object' && module.exports) module.exports = engine;
+  root.Roman2048Engine = engine;
+})(typeof window !== 'undefined' ? window : globalThis, function () {
+  'use strict';
+  const SIZE = 4;
+  const TARGET = 2048;
+  const DIRECTIONS = ['left', 'right', 'up', 'down'];
+
+  const emptyBoard = () => Array.from({ length: SIZE }, () => Array(SIZE).fill(0));
+  const cloneBoard = board => board.map(row => row.slice());
+  const isTile = v => Number.isSafeInteger(v) && (v === 0 || (v >= 2 && Number.isInteger(Math.log2(v))));
+  function isValidBoard(board) {
+    return Array.isArray(board) && board.length === SIZE && board.every(
+      row => Array.isArray(row) && row.length === SIZE && row.every(isTile)
+    );
+  }
+
+  // A tile may merge only once per move. E.g. [2,2,2,2] -> [4,4,0,0].
+  function slideLine(line) {
+    const values = line.filter(Boolean);
+    const result = [];
+    const mergedValues = [];
+    let gained = 0;
+    for (let i = 0; i < values.length; i++) {
+      if (i + 1 < values.length && values[i] === values[i + 1]) {
+        const next = values[i] * 2;
+        result.push(next);
+        mergedValues.push(next);
+        gained += next;
+        i++;
+      } else {
+        result.push(values[i]);
+      }
+    }
+    while (result.length < SIZE) result.push(0);
+    return { line: result, gained, mergedValues };
+  }
+
+  function moveBoard(original, direction) {
+    if (!isValidBoard(original)) throw new TypeError('Invalid 4×4 board');
+    if (!DIRECTIONS.includes(direction)) throw new TypeError('Invalid direction');
+    const board = cloneBoard(original);
+    let gained = 0;
+    const mergedValues = [];
+    let changed = false;
+
+    for (let fixed = 0; fixed < SIZE; fixed++) {
+      const cells = [];
+      for (let j = 0; j < SIZE; j++) {
+        if (direction === 'left') cells.push([fixed, j]);
+        if (direction === 'right') cells.push([fixed, SIZE - 1 - j]);
+        if (direction === 'up') cells.push([j, fixed]);
+        if (direction === 'down') cells.push([SIZE - 1 - j, fixed]);
+      }
+      const before = cells.map(([r, c]) => board[r][c]);
+      const after = slideLine(before);
+      gained += after.gained;
+      mergedValues.push(...after.mergedValues);
+      cells.forEach(([r, c], index) => {
+        if (board[r][c] !== after.line[index]) changed = true;
+        board[r][c] = after.line[index];
+      });
+    }
+    return { board, changed, gained, mergedValues };
+  }
+
+  function canMove(board) {
+    if (!isValidBoard(board)) return false;
+    for (let r = 0; r < SIZE; r++) for (let c = 0; c < SIZE; c++) {
+      const v = board[r][c];
+      if (!v || (c + 1 < SIZE && board[r][c + 1] === v) || (r + 1 < SIZE && board[r + 1][c] === v)) return true;
+    }
+    return false;
+  }
+
+  // Randomness is injectable so every rule can be tested deterministically.
+  function randomIndex(rng, length) {
+    const draw = rng();
+    if (!Number.isFinite(draw) || draw < 0 || draw >= 1) throw new RangeError('Random number must be between 0 and 1');
+    return Math.floor(draw * length);
+  }
+  function spawnTile(original, rng = Math.random) {
+    const board = cloneBoard(original);
+    const empty = [];
+    for (let r = 0; r < SIZE; r++) for (let c = 0; c < SIZE; c++) if (board[r][c] === 0) empty.push([r, c]);
+    if (!empty.length) return { board, tile: null };
+    const [r, c] = empty[randomIndex(rng, empty.length)];
+    const value = rng() < 0.9 ? 2 : 4;
+    board[r][c] = value;
+    return { board, tile: value };
+  }
+
+  function newGame(previous = null, rng = Math.random) {
+    const first = spawnTile(emptyBoard(), rng);
+    const second = spawnTile(first.board, rng);
+    return {
+      board: second.board, score: 0, best: previous ? previous.best || 0 : 0,
+      highest: Math.max(2, ...second.board.flat()), moves: 0,
+      seen: [...new Set([...(previous && previous.seen || []), 2, 4])],
+      undo: null, won: false, keepGoing: false, over: false
+    };
+  }
+
+  function snapshot(state) {
+    return {
+      board: cloneBoard(state.board), score: state.score, highest: state.highest,
+      moves: state.moves, seen: [...state.seen], won: state.won,
+      keepGoing: state.keepGoing, over: state.over
+    };
+  }
+  function turn(state, direction, rng = Math.random) {
+    if (state.over || (state.won && !state.keepGoing)) return { state, changed: false, promoted: null };
+    const moved = moveBoard(state.board, direction);
+    if (!moved.changed) return { state, changed: false, promoted: null };
+    const spawned = spawnTile(moved.board, rng);
+    const top = Math.max(...spawned.board.flat());
+    const highest = Math.max(state.highest, top);
+    const won = state.won || top >= TARGET;
+    const seen = [...new Set([...state.seen, ...moved.mergedValues, spawned.tile].filter(Boolean))];
+    const next = {
+      board: spawned.board, score: state.score + moved.gained,
+      best: Math.max(state.best, state.score + moved.gained),
+      highest, moves: state.moves + 1, seen, undo: snapshot(state),
+      won, keepGoing: state.keepGoing, over: !canMove(spawned.board)
+    };
+    return { state: next, changed: true, promoted: highest > state.highest ? highest : null };
+  }
+  function undoTurn(state) {
+    if (!state.undo) return state;
+    return { ...snapshot(state.undo), best: state.best, undo: null };
+  }
+  function continueGame(state) { return { ...state, keepGoing: true }; }
+  function isValidState(state) {
+    return Boolean(state && isValidBoard(state.board) &&
+      Number.isSafeInteger(state.score) && state.score >= 0 &&
+      Number.isSafeInteger(state.best) && state.best >= 0 &&
+      Number.isSafeInteger(state.moves) && state.moves >= 0 &&
+      isTile(state.highest) && state.highest > 0 &&
+      Array.isArray(state.seen) && state.seen.every(isTile) &&
+      typeof state.won === 'boolean' && typeof state.over === 'boolean' && typeof state.keepGoing === 'boolean');
+  }
+  return { SIZE, TARGET, emptyBoard, slideLine, moveBoard, canMove, spawnTile, newGame, turn, undoTurn, continueGame, isValidState };
+});
+
+</script>
+<script>
+/* Browser interface and persistence. Game rules are in engine.js. */
+(function () {
+  'use strict';
+  const { ranks, byValue, rankFor } = window.RomanRanks;
+  const Game = window.Roman2048Engine;
+  const STORAGE_KEY = 'roman-cursus-2048-v2';
+  const OLD_KEY = 'roman-cursus-2048-v1';
+  const $ = id => document.getElementById(id);
+  let state;
+  let toastTimer;
+  let previouslyFocused = null;
+  let visibleEnding = ''; // Prevent confetti from restarting on every render.
+
+  function readStorage(key) {
+    try { return JSON.parse(localStorage.getItem(key) || 'null'); }
+    catch (_) { return null; }
+  }
+  function restore() {
+    const current = readStorage(STORAGE_KEY);
+    if (Game.isValidState(current)) return current;
+    // Migrate an earlier single-file prototype, where these properties had different names.
+    const old = readStorage(OLD_KEY);
+    if (!old) return null;
+    const migrated = {
+      board: old.board, score: old.score, best: old.best, highest: old.highest,
+      moves: old.moves, seen: old.everSeen || [2, 4], undo: null,
+      won: Boolean(old.won), keepGoing: Boolean(old.keepGoing), over: Boolean(old.over)
+    };
+    return Game.isValidState(migrated) ? migrated : null;
+  }
+  function save() {
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); }
+    catch (_) { /* Private browsing or file permissions may block persistence. */ }
+  }
+  function roman(number) { return ['I','II','III','IV','V','VI','VII','VIII','IX','X','XI'][number - 1] || String(number); }
+  function toast(message) {
+    $('toast').textContent = message;
+    $('toast').classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => $('toast').classList.remove('show'), 1800);
+  }
+  function buildLegend() {
+    const list = $('rank-legend');
+    const fragment = document.createDocumentFragment();
+    ranks.forEach((rank, index) => {
+      const item = document.createElement('div');
+      item.className = 'legend-item' + (rank.v === 2048 ? ' final' : '');
+      item.dataset.rank = String(rank.v);
+      item.setAttribute('role', 'listitem');
+      item.title = rank.detail;
+      const icon = document.createElement('span');
+      icon.className = 'legend-icon';
+      icon.style.setProperty('--rank-bg', rank.color);
+      icon.style.setProperty('--rank-ink', rank.ink);
+      icon.textContent = rank.glyph;
+      icon.setAttribute('aria-hidden', 'true');
+      const info = document.createElement('span');
+      info.className = 'legend-copy';
+      const name = document.createElement('strong');
+      name.textContent = `${roman(index + 1)} · ${rank.name}`;
+      const value = document.createElement('small');
+      value.textContent = String(rank.v);
+      info.append(name, value);
+      item.append(icon, info);
+      fragment.append(item);
+    });
+    list.replaceChildren(fragment);
+  }
+
+  const confettiColors = ['#a70000', '#c5ae4f', '#604c4c', '#eee8e8', '#790181', '#e2c75d', '#ce6784'];
+  function startConfetti() {
+    const layer = $('confetti');
+    layer.replaceChildren();
+    if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    $('game-overlay').style.setProperty('--fall', `${$('board').clientHeight + 90}px`);
+    const pieces = document.createDocumentFragment();
+    for (let n = 0; n < 68; n++) {
+      const piece = document.createElement('span');
+      piece.className = 'confetti-bit';
+      piece.style.setProperty('--x', `${(Math.random() * 106 - 3).toFixed(2)}%`);
+      piece.style.setProperty('--w', `${Math.round(6 + Math.random() * 5)}px`);
+      piece.style.setProperty('--h', `${Math.round(8 + Math.random() * 9)}px`);
+      piece.style.setProperty('--duration', `${(2.4 + Math.random() * 2.4).toFixed(2)}s`);
+      piece.style.setProperty('--delay', `${(-Math.random() * 5).toFixed(2)}s`);
+      piece.style.setProperty('--drift', `${Math.round(Math.random() * 105 - 52)}px`);
+      piece.style.setProperty('--spin', `${Math.round(400 + Math.random() * 660)}deg`);
+      piece.style.setProperty('--confetti-color', confettiColors[n % confettiColors.length]);
+      pieces.append(piece);
+    }
+    layer.append(pieces);
+  }
+  function renderEnding() {
+    const overlay = $('game-overlay');
+    const victory = state.won && !state.keepGoing;
+    const ending = victory ? 'win' : state.over ? 'loss' : '';
+    overlay.classList.toggle('open', Boolean(ending));
+    overlay.classList.toggle('win', victory);
+    if (!ending) {
+      if (visibleEnding) $('confetti').replaceChildren();
+      visibleEnding = '';
+      return;
+    }
+    if (ending === visibleEnding) return;
+    visibleEnding = ending;
+    $('overlay-icon').textContent = victory ? '✹' : '⚔';
+    $('overlay-title').textContent = victory ? 'Ave, Consul!' : 'Game Over';
+    // This is developer-authored static Latin/English text, not visitor input.
+    $('overlay-text').innerHTML = victory
+      ? '<span class="latin" lang="la">Ad consulatum pervenisti! Gloria tibi!</span><span class="translation">You have reached the consulship. Glory to you!</span>'
+      : 'No moves remain. Your political career ends here—but another can begin.';
+    const actions = $('overlay-actions');
+    actions.replaceChildren();
+    const restart = document.createElement('button');
+    restart.className = 'btn primary';
+    restart.textContent = 'Start Again';
+    restart.addEventListener('click', restartGame);
+    actions.append(restart);
+    if (victory) {
+      const continued = document.createElement('button');
+      continued.className = 'btn secondary';
+      continued.textContent = 'Keep playing';
+      continued.addEventListener('click', () => { state = Game.continueGame(state); save(); render(); });
+      actions.append(continued);
+      startConfetti();
+    } else {
+      $('confetti').replaceChildren();
+    }
+  }
+  function render() {
+    const fragment = document.createDocumentFragment();
+    state.board.forEach(row => row.forEach(value => {
+      const rank = rankFor(value);
+      const cell = document.createElement('div');
+      cell.className = 'cell';
+      cell.setAttribute('role', 'gridcell');
+      cell.setAttribute('aria-label', rank ? `${rank.name}, ${value}` : 'Empty');
+      if (rank) {
+        const tile = document.createElement('div');
+        tile.className = 'tile' + (value >= 128 ? ' high' : '');
+        tile.dataset.value = String(value);
+        tile.style.setProperty('--tile-bg', rank.color);
+        tile.style.setProperty('--tile-ink', rank.ink);
+        tile.title = `${rank.name} · ${rank.detail}`;
+        for (const [cls, content] of [['glyph', rank.glyph], ['rank', rank.name], ['value', value]]) {
+          const child = document.createElement('div');
+          child.className = cls;
+          child.textContent = content;
+          tile.append(child);
+        }
+        cell.append(tile);
+      }
+      fragment.append(cell);
+    }));
+    $('board').replaceChildren(fragment);
+    $('score').textContent = state.score.toLocaleString();
+    $('best').textContent = state.best.toLocaleString();
+    $('undo').disabled = !state.undo;
+    const currentRank = rankFor(Math.min(state.highest, 2048)) || ranks[0];
+    const idx = Math.max(0, ranks.findIndex(rank => rank.v === currentRank.v));
+    $('highest-title').textContent = currentRank.name;
+    $('highest-detail').textContent = currentRank.short;
+    $('roman-rank').textContent = roman(idx + 1) + ' / XI';
+    $('progress-fill').style.width = `${idx / 10 * 100}%`;
+    document.querySelectorAll('.legend-item').forEach(item => {
+      const current = Number(item.dataset.rank) === currentRank.v;
+      item.classList.toggle('current', current);
+      if (current) item.setAttribute('aria-current', 'step');
+      else item.removeAttribute('aria-current');
+    });
+
+    renderEnding();
+  }
+  function play(direction) {
+    if ($('dialog-shade').classList.contains('open')) return;
+    const result = Game.turn(state, direction);
+    if (!result.changed) return;
+    state = result.state;
+    save();
+    render();
+    if (result.promoted && byValue[result.promoted]) toast('Promoted to ' + byValue[result.promoted].name + '!');
+  }
+  function restartGame() { state = Game.newGame(state); save(); render(); }
+  function undo() {
+    if (!state.undo) return;
+    state = Game.undoTurn(state); save(); render(); toast('Last move undone');
+  }
+  function openDialog(title, html) {
+    previouslyFocused = document.activeElement;
+    $('dialog-body').innerHTML = `<div class="tiny">Cursus Honorum</div><h2 id="dialog-title">${title}</h2>${html}`;
+    $('dialog-shade').classList.add('open');
+    $('dialog-close').focus();
+  }
+  function closeDialog() {
+    $('dialog-shade').classList.remove('open');
+    if (previouslyFocused && typeof previouslyFocused.focus === 'function') previouslyFocused.focus();
+  }
+  function showAtlas() {
+    // Rank data is maintained locally by us, not accepted from visitors.
+    const items = ranks.map((rank, index) => `<div class="atlas-item${state.seen.includes(rank.v) ? '' : ' locked'}"><div class="atlas-icon" style="--rank-bg:${rank.color};--rank-ink:${rank.ink}">${rank.glyph}</div><div><small>${roman(index + 1)} · ${rank.v}</small><strong>${rank.name}</strong><p>${rank.detail}</p></div></div>`).join('');
+    openDialog('The eleven stages', `<p>The fictional ascent from Roman youth to consul. Faded stages have not yet been unlocked.</p><div class="atlas-grid">${items}</div>`);
+  }
+  function showRules() {
+    openDialog('How to play', `<p>Reach the <strong>Consul</strong> tile (2048)! Two tiles of the same rank merge into one tile of the next rank.</p><p>Use your <strong>arrow keys</strong> or <strong>W / A / S / D</strong> on a computer. On phones and tablets, swipe the board or tap the arrow buttons beneath it.</p><p>Each successful move adds a new tile. The game ends when the board has no possible moves. You may undo the last move.</p><p>The Roman path is a playful simplification, not an official list of mandatory promotions.</p><div class="dialog-actions"><button type="button" class="btn primary" id="close-rules">Ad consulatum! ↗</button></div>`);
+    $('close-rules').addEventListener('click', closeDialog);
+  }
+  function showAbout() {
+    openDialog('A historical footnote', `<p>The <em>cursus honorum</em> was a conventional progression through public offices in Republican Rome. The core later-Republican sequence included the quaestorship and praetorship on the way to the consulship.</p><p>The <strong>aedileship was optional</strong>. We also included education, military service, and the minor office of <em>tresvir monetalis</em>, to make eleven playful stages. Not everyone followed this path.</p><p>These magistracies were restricted to eligible Roman men. Two quaestors did not literally combine into an aedile: merging represents accumulating reputation and <em>dignitas</em>.</p><div class="dialog-actions"><button type="button" class="btn primary" id="close-about">Back to the Forum</button></div>`);
+    $('close-about').addEventListener('click', closeDialog);
+  }
+  $('new-game').addEventListener('click', restartGame);
+  $('undo').addEventListener('click', undo);
+  $('rules').addEventListener('click', showRules);
+  $('atlas').addEventListener('click', showAtlas);
+  $('about').addEventListener('click', showAbout);
+  $('dialog-close').addEventListener('click', closeDialog);
+  $('dialog-shade').addEventListener('click', event => {
+    if (event.target === $('dialog-shade')) closeDialog();
+  });
+  document.querySelectorAll('[data-dir]').forEach(button => {
+    button.addEventListener('click', () => play(button.dataset.dir));
+  });
+  document.addEventListener('keydown', event => {
+    if (event.key === 'Escape' && $('dialog-shade').classList.contains('open')) {
+      closeDialog(); return;
+    }
+    if ($('dialog-shade').classList.contains('open')) {
+      if (event.key === 'Tab') {
+        const focusable = Array.from($('dialog-shade').querySelectorAll('button:not([disabled]),a[href]'));
+        if (focusable.length) {
+          const first = focusable[0], last = focusable[focusable.length - 1];
+          if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+          else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+        }
+      }
+      return;
+    }
+    if (event.altKey || event.ctrlKey || event.metaKey) return;
+    const activeTag = (document.activeElement && document.activeElement.tagName || '').toLowerCase();
+    if (['input', 'textarea', 'select'].includes(activeTag)) return;
+    const dir = ({ ArrowLeft: 'left', ArrowRight: 'right', ArrowUp: 'up', ArrowDown: 'down', a: 'left', d: 'right', w: 'up', s: 'down' })[event.key];
+    if (!dir) return;
+    event.preventDefault(); play(dir);
+  });
+  let startTouch = null;
+  const board = $('board');
+  board.addEventListener('touchstart', event => {
+    if (event.touches.length === 1) startTouch = { x: event.touches[0].clientX, y: event.touches[0].clientY };
+  }, { passive: true });
+  board.addEventListener('touchmove', event => { if (startTouch) event.preventDefault(); }, { passive: false });
+  board.addEventListener('touchend', event => {
+    if (!startTouch || !event.changedTouches.length) return;
+    const dx = event.changedTouches[0].clientX - startTouch.x;
+    const dy = event.changedTouches[0].clientY - startTouch.y;
+    startTouch = null;
+    if (Math.max(Math.abs(dx), Math.abs(dy)) < 25) return;
+    play(Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 'right' : 'left') : (dy > 0 ? 'down' : 'up'));
+  }, { passive: true });
+  board.addEventListener('touchcancel', () => { startTouch = null; });
+  window.addEventListener('resize', () => {
+    $('game-overlay').style.setProperty('--fall', `${$('board').clientHeight + 90}px`);
+  });
+  buildLegend();
+  state = restore() || Game.newGame();
+  save(); render();
+})();
+
+</script>
+</body>
+</html>
